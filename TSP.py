@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 
 kroA100_filename = 'kroA100.tsp'
 kroB100_filename = 'kroB100.tsp'
@@ -31,7 +32,10 @@ class TSP_solver:
         for coord in coords:
             v = []
             for next_coord in coords:
-                dist = int(np.linalg.norm(coord - next_coord))
+                dist = 0
+                if not(np.array_equal(coord, next_coord)):
+                    dist = int(round(math.sqrt(((coord[0]-next_coord[0])**2)+((coord[1]-next_coord[1])**2))))
+                    #dist = int(round(np.linalg.norm(coord - next_coord)))
                 v.append(dist)
             matrix.append(v)
         return matrix
