@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+from random import randrange
 
 kroA100_filename = 'kroA100.tsp'
 kroB100_filename = 'kroB100.tsp'
@@ -69,7 +70,14 @@ class TSP_solver:
         plt.tight_layout()
         plt.show()
 
+    def get_starting_points(self):
+        start1 = randrange(len(self.coords))
+        distances = self.dist_matrix[start1]
+        start2 = distances.index(max(distances))
+        return start1, start2
+
     def greedy_nearest_neighbor(self):
+        start1, start2 = self.get_starting_points()
 
         # returns edge matrix [a, b, ..., n]
         # meaning point 0 connects to point a, point 1 to point b...
@@ -78,6 +86,7 @@ class TSP_solver:
         return edge_matrix
 
     def greedy_cycle(self):
+        start1, start2 = self.get_starting_points()
 
         # returns edge matrix [a, b, ..., n]
         # meaning point 0 connects to point a, point 1 to point b...
@@ -86,6 +95,7 @@ class TSP_solver:
         return edge_matrix
 
     def regret(self):
+        start1, start2 = self.get_starting_points()
 
         # returns edge matrix [a, b, ..., n]
         # meaning point 0 connects to point a, point 1 to point b...
@@ -95,4 +105,4 @@ class TSP_solver:
 
 
 solver = TSP_solver(kroA100_filename)
-solver.greedy_cycle()
+solver.greedy_nearest_neighbor()
