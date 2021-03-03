@@ -107,6 +107,28 @@ class TSP_solver:
         #     start2 = randrange(len(self.coords))
         return start1, start2
 
+    def group_vertices(self, start1, start2):
+        # groups vertices into two clusters based on their distance
+        # to the starting points
+        dist_set = []
+        # for each point, get distances from start1 and start2
+        # and sort points based on how much closer they are to start1 than to start2
+        for point in range(len(self.dist_matrix)):
+            dist1 = self.dist_matrix[point][start1]
+            dist2 = self.dist_matrix[point][start2]
+            if dist1 != 0 and dist2 != 0:
+                dist_set.append((point, dist1 / dist2))
+
+        dist_set.sort(key=lambda x: x[1])
+        # print("SET OF DISTANCES: ", dist_set)
+
+        mid = int(round(len(dist_set) / 2))
+        # put points closer to start1 to cluster1,
+        # put points closer to start2 to cluster2
+        cluster1 = [start1] + [p[0] for p in dist_set[:mid]]
+        cluster2 = [start2] + [p[0] for p in dist_set[mid:]]
+        return cluster1, cluster2
+
     def greedy_nearest_neighbor(self):
         # for point, find the nearest neighbor in cluster that hasn't been visited yet
         def find_nearest_neighbor(point, cluster, visited):
@@ -154,24 +176,7 @@ class TSP_solver:
         start1, start2 = self.get_starting_points()
         print("Starting points: ", start1, start2)
 
-        # for each point, get distances from start1 and start2
-        # and sort points based on how much closer they are to start1 than to start2
-        dist_set = []
-        for point in range(len(self.dist_matrix)):
-            dist1 = self.dist_matrix[point][start1]
-            dist2 = self.dist_matrix[point][start2]
-            if dist1 != 0 and dist2 != 0:
-                dist_set.append((point, dist1 / dist2))
-
-        dist_set.sort(key=lambda x: x[1])
-        #print("SET OF DISTANCES: ", dist_set)
-
-        mid = int(round(len(dist_set) / 2))
-
-        # put points closer to start1 to cluster1,
-        # put points closer to start2 to cluster2
-        cluster1 = [start1] + [p[0] for p in dist_set[:mid]]
-        cluster2 = [start2] + [p[0] for p in dist_set[mid:]]
+        cluster1, cluster2 = self.group_vertices(start1, start2)
 
         # find the shortest path in cluster1 and cluster2
         path1 = get_shortest_cycle(cluster1)
@@ -215,3 +220,4 @@ class TSP_solver:
 
 
 solver = TSP_solver(kroA100_filename)
+solver.greedy_nearest_neighbor()
