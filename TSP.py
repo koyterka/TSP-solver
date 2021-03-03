@@ -7,18 +7,20 @@ from random import randrange
 kroA100_filename = 'kroA100.tsp'
 kroB100_filename = 'kroB100.tsp'
 
-test_points = [(1,1), (1.5,5), (3.5,2), (5,1.5),
-               (5.5,5), (7.5,2), (8,3.5), (10.5, 1),
-               (20, 10.5), (15, 13), (8,10), (10, 12),
-               (7, 8), (10, 7), (11, 5), (15,7)]
+test_points = [(1, 1), (1.5, 5), (3.5, 2), (5, 1.5),
+               (5.5, 5), (7.5, 2), (8, 3.5), (10.5, 1),
+               (20, 10.5), (15, 13), (8, 10), (10, 12),
+               (7, 8), (10, 7), (11, 5), (15, 7)]
+
+
+# test_points = [(1,1), (1.5,5), (3.5,2), (5,1.5),
+#                (5.5,5)]
 
 class TSP_solver:
     def __init__(self, filename):
-        #self.coords = self.get_graph_from_tsp(filename)
-        self.coords = test_points
-        print(self.coords)
+        self.coords = self.get_graph_from_tsp(filename)
+        #self.coords = test_points
         self.dist_matrix = self.get_distance_matrix(self.coords)
-        print(self.dist_matrix)
 
     # load point coordinates from tsp file
     def get_graph_from_tsp(self, filename):
@@ -41,18 +43,20 @@ class TSP_solver:
             v = []
             for next_coord in coords:
                 dist = 0
-                if not(np.array_equal(coord, next_coord)):
-                    dist = int(round(math.sqrt(((coord[0]-next_coord[0])**2)+((coord[1]-next_coord[1])**2))))
-                    #dist = int(round(np.linalg.norm(coord - next_coord)))
+                if not (np.array_equal(coord, next_coord)):
+                    dist = int(round(math.sqrt(((coord[0] - next_coord[0]) ** 2) + ((coord[1] - next_coord[1]) ** 2))))
                 v.append(dist)
             matrix.append(v)
         return matrix
 
     # draw the graph
-    def draw_graph(self, title, edge_matrix):
+    def draw_graph(self, title, path1, path2):
         fig, ax = plt.subplots()
         ax.set_title(title)
-        ax.scatter([p[0] for p in self.coords], [p[1] for p in self.coords])
+        path1_coords = [self.coords[x] for x in path1]
+        path2_coords = [self.coords[x] for x in path2]
+        ax.scatter([p[0] for p in path1_coords], [p[1] for p in path1_coords], c='#ff0e8e')
+        ax.scatter([p[0] for p in path2_coords], [p[1] for p in path2_coords], c='#0eff7f')
 
         def draw_edge(a, b):
             ax.annotate("",
@@ -61,14 +65,22 @@ class TSP_solver:
                         arrowprops=dict(arrowstyle="-",
                                         connectionstyle="arc3"))
 
-        # draw edges
-        for x in range(len(edge_matrix)):
-            start_pos = self.coords[x]
-            end_pos = self.coords[edge_matrix[x]]
+        # draw path1
+        for x in range(len(path1) - 1):
+            start_pos = self.coords[path1[x]]
+            end_pos = self.coords[path1[x + 1]]
             draw_edge(start_pos, end_pos)
+        draw_edge(self.coords[path1[-1]], self.coords[path1[0]])
+
+        # draw path2
+        for x in range(len(path2) - 1):
+            start_pos = self.coords[path2[x]]
+            end_pos = self.coords[path2[x + 1]]
+            draw_edge(start_pos, end_pos)
+        draw_edge(self.coords[path2[-1]], self.coords[path2[0]])
 
         # show the graph
-        distance = self.get_cycle_length(edge_matrix)
+        distance = self.get_cycle_length(path1) + self.get_cycle_length(path2)
         N = len(self.coords)
         textstr = "N nodes: %d\nTotal length: %d" % (N, distance)
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
@@ -77,59 +89,103 @@ class TSP_solver:
         plt.tight_layout()
         plt.show()
 
-    def get_cycle_length(self, edge_matrix):
+    def get_cycle_length(self, cycle):
         cycle_len = 0
-        for x in edge_matrix:
-            edge_cost = self.dist_matrix[x][edge_matrix[x]]
-            cycle_len = cycle_len+edge_cost
+        for x in range(len(cycle) - 1):
+            edge_cost = self.dist_matrix[cycle[x]][cycle[x + 1]]
+            cycle_len = cycle_len + edge_cost
         return cycle_len
 
     def get_starting_points(self):
         start1 = randrange(len(self.coords))
+        # if we choose the furthest
         distances = self.dist_matrix[start1]
         start2 = distances.index(max(distances))
+        # if we choose random
+        # start2 = randrange(len(self.coords))
+        # while start1 == start2:
+        #     start2 = randrange(len(self.coords))
         return start1, start2
 
     def greedy_nearest_neighbor(self):
-        def find_nearest_neighbor(point, visited):
+        # for point, find the nearest neighbor in cluster that hasn't been visited yet
+        def find_nearest_neighbor(point, cluster, visited):
             distances = self.dist_matrix[point]
-            #print("DISTANCES OF ", point, distances)
+            min_d = max(distances)
+            nn = None
+            for x in cluster:
+                if x not in visited and distances[x] <= min_d:
+                    min_d = distances[x]
+                    nn = x
+            # min_d = min(i for i in distances if distances.index(i) not in visited)
+            return nn
 
-            min_d = min(i for i in distances if distances.index(i) not in visited)
+        def find_cycle(cluster, start):
+            # in cluster, use nn to find a cycle that starts with start
+            visited = [start]
+            current = start
+            while len(visited) < len(cluster):
+                nn = find_nearest_neighbor(current, cluster, visited)
+                visited.append(nn)
+                current = nn
+            visited.append(start)
+            return visited
 
-            #print("NEAREST NEIGHBOR OF ", point, distances.index(min_d), ", distance:", min_d)
-            return distances.index(min_d)
+        def get_shortest_cycle(cluster):
+            # find the shortest possible cycle in cluster
+            paths = []
+            while len(paths) < len(cluster):
+                path = find_cycle(cluster, cluster[len(paths)])
+                paths.append(path)
+            paths_cost = []
+            for p in range(len(paths)):
+                paths_cost.append((p, self.get_cycle_length(paths[p])))
+            paths_cost.sort(key=lambda x: x[1])
+            shortest_path = paths[paths_cost[0][0]]
+            # transform the path so it starts properly
+            start = cluster[0]
+            if shortest_path[0] != start:
+                start_id = shortest_path.index(start)
+                shortest_path = shortest_path[start_id:-1] + \
+                                shortest_path[:start_id] + [start]
+            return shortest_path
 
+        # set starting points
         start1, start2 = self.get_starting_points()
-        edge_matrix=[]
-        for i in range(len(self.coords)):
-            edge_matrix.append(0)
-        print("STARTING POINTS: ", start1, start2)
-        visited = [start1, start2]
+        print("Starting points: ", start1, start2)
 
+        # for each point, get distances from start1 and start2
+        # and sort points based on how much closer they are to start1 than to start2
+        dist_set = []
+        for point in range(len(self.dist_matrix)):
+            dist1 = self.dist_matrix[point][start1]
+            dist2 = self.dist_matrix[point][start2]
+            if dist1 != 0 and dist2 != 0:
+                dist_set.append((point, dist1 / dist2))
 
-        current1 = start1
-        current2 = start2
-        while len(visited) < len(self.coords):
-            nn = find_nearest_neighbor(current1, visited)
-            edge_matrix[current1] = nn
-            current1 = nn
-            visited.append(current1)
-            nn = find_nearest_neighbor(current2, visited)
-            edge_matrix[current2] = nn
-            current2 = nn
-            visited.append(current2)
-        edge_matrix[current1] = start1
-        edge_matrix[current2] = start2
+        dist_set.sort(key=lambda x: x[1])
+        #print("SET OF DISTANCES: ", dist_set)
 
-        #print("VISITED: ", visited)
-        #print("EDGE MATRIX: ", edge_matrix)
-        self.draw_graph('Greedy nearest neighbor', edge_matrix)
-        return edge_matrix
+        mid = int(round(len(dist_set) / 2))
+
+        # put points closer to start1 to cluster1,
+        # put points closer to start2 to cluster2
+        cluster1 = [start1] + [p[0] for p in dist_set[:mid]]
+        cluster2 = [start2] + [p[0] for p in dist_set[mid:]]
+
+        # find the shortest path in cluster1 and cluster2
+        path1 = get_shortest_cycle(cluster1)
+        path2 = get_shortest_cycle(cluster2)
+
+        # get the path length
+        path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
+        # draw the paths
+        self.draw_graph('Greedy nearest neighbor', path1, path2)
+        return path_len
 
     def greedy_cycle(self):
         start1, start2 = self.get_starting_points()
-        edge_matrix=[]
+        edge_matrix = []
         for i in range(len(self.coords)):
             edge_matrix.append(0)
 
@@ -140,7 +196,7 @@ class TSP_solver:
 
     def regret(self):
         start1, start2 = self.get_starting_points()
-        edge_matrix=[]
+        edge_matrix = []
         for i in range(len(self.coords)):
             edge_matrix.append(0)
 
@@ -148,6 +204,14 @@ class TSP_solver:
         # returns edge matrix [a, b, ..., n]
         # meaning point 0 connects to point a, point 1 to point b...
         return edge_matrix
+
+    def algo_test(self, filename):
+        f = open(filename, "w")
+        for x in range(100):
+            p_len = self.greedy_nearest_neighbor()
+            print("test", x, "len:", p_len)
+            f.write(str(p_len)+'\n')
+        f.close()
 
 
 solver = TSP_solver(kroA100_filename)
