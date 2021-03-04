@@ -29,7 +29,6 @@ class TSP_solver:
         lines = file.readlines()
         file.close()
         lines = lines[6:-1]
-
         coords = []
         for point in lines:
             p = point.split()
@@ -51,6 +50,7 @@ class TSP_solver:
 
     # draw the graph
     def draw_graph(self, title, path1, path2):
+        coords = self.coords
         fig, ax = plt.subplots()
         ax.set_title(title)
         path1_coords = [self.coords[x] for x in path1]
@@ -66,18 +66,15 @@ class TSP_solver:
                                         connectionstyle="arc3"))
 
         # draw path1
-        for x in range(len(path1) - 1):
-            start_pos = self.coords[path1[x]]
-            end_pos = self.coords[path1[x + 1]]
-            draw_edge(start_pos, end_pos)
-        draw_edge(self.coords[path1[-1]], self.coords[path1[0]])
+        def draw_path(path):
+            for x in range(len(path) - 1):
+                start_pos = coords[path[x]]
+                end_pos = coords[path[x + 1]]
+                draw_edge(start_pos, end_pos)
+            draw_edge(coords[path[-1]], coords[path[0]])
 
-        # draw path2
-        for x in range(len(path2) - 1):
-            start_pos = self.coords[path2[x]]
-            end_pos = self.coords[path2[x + 1]]
-            draw_edge(start_pos, end_pos)
-        draw_edge(self.coords[path2[-1]], self.coords[path2[0]])
+        draw_path(path1)
+        draw_path(path2)
 
         # show the graph
         distance = self.get_cycle_length(path1) + self.get_cycle_length(path2)
@@ -129,25 +126,25 @@ class TSP_solver:
         cluster2 = [start2] + [p[0] for p in dist_set[mid:]]
         return cluster1, cluster2
 
-    def greedy_nearest_neighbor(self):
-        # for point, find the nearest neighbor in cluster that hasn't been visited yet
-        def find_nearest_neighbor(point, cluster, visited):
-            distances = self.dist_matrix[point]
-            min_d = max(distances)
-            nn = None
-            for x in cluster:
-                if x not in visited and distances[x] <= min_d:
-                    min_d = distances[x]
-                    nn = x
-            # min_d = min(i for i in distances if distances.index(i) not in visited)
-            return nn
+    # for point, find the nearest neighbor in cluster that hasn't been visited yet
+    def find_nearest_neighbor(self, point, cluster, visited):
+        distances = self.dist_matrix[point]
+        min_d = max(distances)
+        nn = None
+        for x in cluster:
+            if x not in visited and distances[x] <= min_d:
+                min_d = distances[x]
+                nn = x
+        # min_d = min(i for i in distances if distances.index(i) not in visited)
+        return nn, min_d
 
-        def find_cycle(cluster, start):
-            # in cluster, use nn to find a cycle that starts with start
+    def greedy_nearest_neighbor(self):
+        def build_cycle(cluster, start):
+            # in cluster, use nn to build a cycle that starts with start
             visited = [start]
             current = start
             while len(visited) < len(cluster):
-                nn = find_nearest_neighbor(current, cluster, visited)
+                nn, _ = self.find_nearest_neighbor(current, cluster, visited)
                 visited.append(nn)
                 current = nn
             visited.append(start)
@@ -157,7 +154,7 @@ class TSP_solver:
             # find the shortest possible cycle in cluster
             paths = []
             while len(paths) < len(cluster):
-                path = find_cycle(cluster, cluster[len(paths)])
+                path = build_cycle(cluster, cluster[len(paths)])
                 paths.append(path)
             paths_cost = []
             for p in range(len(paths)):
@@ -190,34 +187,65 @@ class TSP_solver:
 
     def greedy_cycle(self):
         start1, start2 = self.get_starting_points()
-        edge_matrix = []
-        for i in range(len(self.coords)):
-            edge_matrix.append(0)
+        cluster1, cluster2 = self.group_vertices(start1, start2)
+        #print("CLUSTER1", cluster1, "CLUSTER2: ", cluster2)
 
-        self.draw_graph('Greedy cycle', edge_matrix)
-        # returns edge matrix [a, b, ..., n]
-        # meaning point 0 connects to point a, point 1 to point b...
-        return edge_matrix
+        def build_cycle(start, cluster):
+            # create a path from start to the nearest vertex
+            nn, _ = self.find_nearest_neighbor(start, cluster, [start])
+            path = [start, nn, start]
+
+            while len(path) < len(cluster)+1:
+                k, k_dist = self.find_nearest_neighbor(path[0], cluster, path)
+                for point in path[1:-1]:
+                    k_tmp, k_dist_tmp = self.find_nearest_neighbor(point, cluster, path)
+                    if k_dist_tmp < k_dist:
+                        k = k_tmp
+                        k_dist = k_dist_tmp
+
+                # look for a vertex {i, j} that minimises the value of dik+dkj-dij
+                i = 0
+                j = 1
+                dik = self.dist_matrix[path[i]][k]
+                dkj = self.dist_matrix[k][path[j]]
+                dij = self.dist_matrix[path[i]][path[j]]
+                insert_cost = dik+dkj-dij
+
+                for i_tmp in range(len(path)-1):
+                    dik = self.dist_matrix[path[i_tmp]][k]
+                    dkj = self.dist_matrix[k][path[i_tmp+1]]
+                    dij = self.dist_matrix[path[i_tmp]][path[i_tmp+1]]
+                    tmp_cost = dik+dkj-dij
+                    if tmp_cost < insert_cost:
+                        i = i_tmp
+                        insert_cost = tmp_cost
+                path.insert(i+1, k)
+            return path
+
+        path1 = build_cycle(start1, cluster1)
+        path2 = build_cycle(start2, cluster2)
+
+        path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
+        print("test", start1, start2, ":", path_len)
+        self.draw_graph('Greedy cycle', path1, path2)
+        return path_len
 
     def regret(self):
         start1, start2 = self.get_starting_points()
-        edge_matrix = []
-        for i in range(len(self.coords)):
-            edge_matrix.append(0)
-
-        self.draw_graph('2-regret', edge_matrix)
-        # returns edge matrix [a, b, ..., n]
-        # meaning point 0 connects to point a, point 1 to point b...
-        return edge_matrix
+        path1, path2 = []
+        self.draw_graph('2-regret', path1, path2)
+        path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
+        return path_len
 
     def algo_test(self, filename):
         f = open(filename, "w")
         for x in range(100):
-            p_len = self.greedy_nearest_neighbor()
-            print("test", x, "len:", p_len)
+            p_len = self.greedy_cycle(x)
+            #print("test", x, "len:", p_len)
             f.write(str(p_len)+'\n')
         f.close()
 
 
-solver = TSP_solver(kroA100_filename)
-solver.greedy_nearest_neighbor()
+solver = TSP_solver(kroB100_filename)
+#solver.algo_test('gc_test_B.txt')
+solver.greedy_cycle()
