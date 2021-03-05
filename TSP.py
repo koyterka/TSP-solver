@@ -1,7 +1,7 @@
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 import math
+from TSP_visualiser import TSP_visualiser
 from random import randrange
 
 kroA100_filename = 'kroA100.tsp'
@@ -13,13 +13,10 @@ test_points = [(1, 1), (1.5, 5), (3.5, 2), (5, 1.5),
                (7, 8), (10, 7), (11, 5), (15, 7)]
 
 
-# test_points = [(1,1), (1.5,5), (3.5,2), (5,1.5),
-#                (5.5,5)]
-
 class TSP_solver:
     def __init__(self, filename):
         self.coords = self.get_graph_from_tsp(filename)
-        #self.coords = test_points
+        # self.coords = test_points
         self.dist_matrix = self.get_distance_matrix(self.coords)
 
     # load point coordinates from tsp file
@@ -48,54 +45,17 @@ class TSP_solver:
             matrix.append(v)
         return matrix
 
-    # draw the graph
-    def draw_graph(self, title, path1, path2):
-        coords = self.coords
-        fig, ax = plt.subplots()
-        ax.set_title(title)
-        path1_coords = [self.coords[x] for x in path1]
-        path2_coords = [self.coords[x] for x in path2]
-        ax.scatter([p[0] for p in path1_coords], [p[1] for p in path1_coords], c='#ff0e8e')
-        ax.scatter([p[0] for p in path2_coords], [p[1] for p in path2_coords], c='#0eff7f')
-
-        def draw_edge(a, b):
-            ax.annotate("",
-                        xy=a, xycoords='data',
-                        xytext=b, textcoords='data',
-                        arrowprops=dict(arrowstyle="-",
-                                        connectionstyle="arc3"))
-
-        # draw path1
-        def draw_path(path):
-            for x in range(len(path) - 1):
-                start_pos = coords[path[x]]
-                end_pos = coords[path[x + 1]]
-                draw_edge(start_pos, end_pos)
-            draw_edge(coords[path[-1]], coords[path[0]])
-
-        draw_path(path1)
-        draw_path(path2)
-
-        # show the graph
-        distance = self.get_cycle_length(path1) + self.get_cycle_length(path2)
-        N = len(self.coords)
-        textstr = "N nodes: %d\nTotal length: %d" % (N, distance)
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
-                verticalalignment='top', bbox=props)
-        plt.tight_layout()
-        plt.show()
-
+    # calculate the length of cycle
     def get_cycle_length(self, cycle):
         cycle_len = 0
-        for x in range(len(cycle) - 1):
-            edge_cost = self.dist_matrix[cycle[x]][cycle[x + 1]]
-            cycle_len = cycle_len + edge_cost
+        for i, point in enumerate(cycle[:-1]):
+            edge_len = self.dist_matrix[point][cycle[i + 1]]
+            cycle_len = cycle_len + edge_len
         return cycle_len
 
+    # get a random starting point (start1), get the furthest point from starting point (start2)
     def get_starting_points(self):
         start1 = randrange(len(self.coords))
-        # if we choose the furthest
         distances = self.dist_matrix[start1]
         start2 = distances.index(max(distances))
         # if we choose random
@@ -104,9 +64,9 @@ class TSP_solver:
         #     start2 = randrange(len(self.coords))
         return start1, start2
 
+    # groups vertices into two clusters based on their distance
+    # to the starting points
     def group_vertices(self, start1, start2):
-        # groups vertices into two clusters based on their distance
-        # to the starting points
         dist_set = []
         # for each point, get distances from start1 and start2
         # and sort points based on how much closer they are to start1 than to start2
@@ -115,196 +75,248 @@ class TSP_solver:
             dist2 = self.dist_matrix[point][start2]
             if dist1 != 0 and dist2 != 0:
                 dist_set.append((point, dist1 / dist2))
-
         dist_set.sort(key=lambda x: x[1])
         # print("SET OF DISTANCES: ", dist_set)
 
-        mid = int(round(len(dist_set) / 2))
         # put points closer to start1 to cluster1,
         # put points closer to start2 to cluster2
+        mid = int(round(len(dist_set) / 2))
         cluster1 = [start1] + [p[0] for p in dist_set[:mid]]
         cluster2 = [start2] + [p[0] for p in dist_set[mid:]]
         return cluster1, cluster2
 
-    # for point, find the nearest neighbor in cluster that hasn't been visited yet
-    def find_nearest_neighbor(self, point, cluster, visited):
+    # for point, find the nearest neighbour in cluster that hasn't been visited yet
+    def find_nearest_neighbour(self, point, cluster, visited):
         distances = self.dist_matrix[point]
         min_d = max(distances)
-        nn = None
+        nn = distances.index(min_d)
         for x in cluster:
             if x not in visited and distances[x] <= min_d:
                 min_d = distances[x]
                 nn = x
-        # min_d = min(i for i in distances if distances.index(i) not in visited)
         return nn, min_d
 
     # for point, find the furthest neighbor in cluster that hasn't been visited yet
-    def find_furthest_neighbor(self, point, cluster, visited):
+    def find_furthest_neighbour(self, point, cluster, visited):
         distances = self.dist_matrix[point]
         max_d = min(distances)
         nn = distances.index(max_d)
-        nn = None
         for x in cluster:
             if x not in visited and distances[x] > max_d:
                 max_d = distances[x]
                 nn = x
-        # min_d = min(i for i in distances if distances.index(i) not in visited)
         return nn, max_d
 
+    # calculate the cost of inserting k between i and j
+    def get_insertion_cost(self, i, j, k):
+        dik = self.dist_matrix[i][k]
+        dkj = self.dist_matrix[k][j]
+        dij = self.dist_matrix[i][j]
+        return dik + dkj - dij
+
+    # solve TSP with RNN method
     def greedy_nearest_neighbor(self):
         def build_cycle(cluster, start):
             # in cluster, use nn to build a cycle that starts with start
-            visited = [start]
+            cycle = [start]
             current = start
-            while len(visited) < len(cluster):
-                nn, _ = self.find_nearest_neighbor(current, cluster, visited)
-                visited.append(nn)
+            while len(cycle) < len(cluster):
+                nn, _ = self.find_nearest_neighbour(current, cluster, cycle)
+                cycle.append(nn)
                 current = nn
-            visited.append(start)
-            return visited
+            cycle.append(start)
+            return cycle
 
         def get_shortest_cycle(cluster):
             # find the shortest possible cycle in cluster
-            paths = []
-            while len(paths) < len(cluster):
-                path = build_cycle(cluster, cluster[len(paths)])
-                paths.append(path)
-            paths_cost = []
-            for p in range(len(paths)):
-                paths_cost.append((p, self.get_cycle_length(paths[p])))
-            paths_cost.sort(key=lambda x: x[1])
-            shortest_path = paths[paths_cost[0][0]]
+            cycles = []
+            while len(cycles) < len(cluster):
+                cycle = build_cycle(cluster, cluster[len(cycles)])
+                cycles.append(cycle)
+
+            cycles_len = [(p, self.get_cycle_length(cycles[p])) for p in range(len(cycles))]
+            cycles_len.sort(key=lambda x: x[1])
+            shortest_cycle = cycles[cycles_len[0][0]]
             # transform the path so it starts properly
             start = cluster[0]
-            if shortest_path[0] != start:
-                start_id = shortest_path.index(start)
-                shortest_path = shortest_path[start_id:-1] + \
-                                shortest_path[:start_id] + [start]
-            return shortest_path
+            if shortest_cycle[0] != start:
+                start_id = shortest_cycle.index(start)
+                shortest_cycle = shortest_cycle[start_id:-1] + shortest_cycle[:start_id] + [start]
+            return shortest_cycle
 
         # set starting points
         start1, start2 = self.get_starting_points()
         print("Starting points: ", start1, start2)
-
+        # group vertices
         cluster1, cluster2 = self.group_vertices(start1, start2)
-
+        vis = TSP_visualiser(self.coords, 'Greedy cycle', cluster1, cluster2)
         # find the shortest path in cluster1 and cluster2
         path1 = get_shortest_cycle(cluster1)
         path2 = get_shortest_cycle(cluster2)
-
         # get the path length
         path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
-        # draw the paths
-        self.draw_graph('Greedy nearest neighbor', path1, path2)
+        vis.keep_graph()
+        vis.update_graph(path1=path1, path2=path2, distance=path_len)
+
         return path_len
 
     def greedy_cycle(self):
-        start1, start2 = self.get_starting_points()
-        cluster1, cluster2 = self.group_vertices(start1, start2)
-        #print("CLUSTER1", cluster1, "CLUSTER2: ", cluster2)
-
         def build_cycle(start, cluster):
             # create a path from start to the nearest vertex
-            nn, _ = self.find_nearest_neighbor(start, cluster, [start])
+            nn, _ = self.find_nearest_neighbour(start, cluster, [start])
             path = [start, nn, start]
-
-            while len(path) < len(cluster)+1:
-                k, k_dist = self.find_nearest_neighbor(path[0], cluster, path)
+            # while we don't have the full cycle
+            while len(path) < len(cluster) + 1:
+                # find an unvisited point that is the nearest to any point in the cycle
+                k, k_dist = self.find_nearest_neighbour(path[0], cluster, path)
                 for point in path[1:-1]:
-                    k_tmp, k_dist_tmp = self.find_nearest_neighbor(point, cluster, path)
+                    k_tmp, k_dist_tmp = self.find_nearest_neighbour(point, cluster, path)
                     if k_dist_tmp < k_dist:
                         k = k_tmp
                         k_dist = k_dist_tmp
-
-                # look for a vertex {i, j} that minimises the value of dik+dkj-dij
+                # in the cycle, look for a vertex {i, j} with the lowest cost of inserting k to the cycle
                 i = 0
-                j = 1
-                dik = self.dist_matrix[path[i]][k]
-                dkj = self.dist_matrix[k][path[j]]
-                dij = self.dist_matrix[path[i]][path[j]]
-                insert_cost = dik+dkj-dij
-
-                for i_tmp in range(len(path)-1):
-                    dik = self.dist_matrix[path[i_tmp]][k]
-                    dkj = self.dist_matrix[k][path[i_tmp+1]]
-                    dij = self.dist_matrix[path[i_tmp]][path[i_tmp+1]]
-                    tmp_cost = dik+dkj-dij
+                insert_cost = self.get_insertion_cost(path[0], path[1], k)
+                for i_tmp in range(len(path) - 1):
+                    tmp_cost = self.get_insertion_cost(path[i_tmp], path[i_tmp + 1], k)
                     if tmp_cost < insert_cost:
                         i = i_tmp
                         insert_cost = tmp_cost
-                path.insert(i+1, k)
+                # insert k between i and j
+                path.insert(i + 1, k)
+                # show path on plot
+                if path[0] == cluster1[0]:
+                    vis.update_graph(path1=path)
+                else:
+                    vis.update_graph(path2=path)
             return path
 
+        # set starting points
+        start1, start2 = self.get_starting_points()
+        # group vertices
+        cluster1, cluster2 = self.group_vertices(start1, start2)
+        vis = TSP_visualiser(self.coords, 'Greedy cycle', cluster1, cluster2)
+        # build paths in cluster1 and cluster2
         path1 = build_cycle(start1, cluster1)
         path2 = build_cycle(start2, cluster2)
-
+        # get path lengths
         path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
-        print("test", start1, start2, ":", path_len)
-        self.draw_graph('Greedy cycle', path1, path2)
+        vis.keep_graph()
+        vis.update_graph(path1=path1, path2=path2, distance=path_len)
         return path_len
 
     def furthest_insert(self):
-        start1, start2 = self.get_starting_points()
-        cluster1, cluster2 = self.group_vertices(start1, start2)
-
-        # print("CLUSTER1", cluster1, "CLUSTER2: ", cluster2)
-
         def build_cycle(start, cluster):
             # create a path from start to the furthest vertex
-            nn, _ = self.find_furthest_neighbor(start, cluster, [start])
+            nn, _ = self.find_furthest_neighbour(start, cluster, [start])
             path = [start, nn, start]
-
+            # find k (unvisited point that if the furthest from any point in cycle)
             while len(path) < len(cluster) + 1:
-                k, k_dist = self.find_furthest_neighbor(path[0], cluster, path)
+                k, k_dist = self.find_furthest_neighbour(path[0], cluster, path)
                 for point in path[1:-1]:
-                    k_tmp, k_dist_tmp = self.find_furthest_neighbor(point, cluster, path)
+                    k_tmp, k_dist_tmp = self.find_furthest_neighbour(point, cluster, path)
                     if k_dist_tmp < k_dist:
                         k = k_tmp
                         k_dist = k_dist_tmp
-
-                # look for a vertex {i, j} that minimises the value of dik+dkj-dij
+                # in the cycle, look for a vertex {i, j} with the lowest cost of inserting k to cycle
                 i = 0
-                j = 1
-                dik = self.dist_matrix[path[i]][k]
-                dkj = self.dist_matrix[k][path[j]]
-                dij = self.dist_matrix[path[i]][path[j]]
-                insert_cost = dik + dkj - dij
-
+                insert_cost = self.get_insertion_cost(path[0], path[1], k)
                 for i_tmp in range(len(path) - 1):
-                    dik = self.dist_matrix[path[i_tmp]][k]
-                    dkj = self.dist_matrix[k][path[i_tmp + 1]]
-                    dij = self.dist_matrix[path[i_tmp]][path[i_tmp + 1]]
-                    tmp_cost = dik + dkj - dij
+                    tmp_cost = self.get_insertion_cost(path[i_tmp], path[i_tmp + 1], k)
                     if tmp_cost < insert_cost:
                         i = i_tmp
                         insert_cost = tmp_cost
+                # insert k between i and j
                 path.insert(i + 1, k)
+
+                # show path on plot
+                if path[0] == cluster1[0]:
+                    vis.update_graph(path1=path)
+                else:
+                    vis.update_graph(path2=path)
             return path
 
+        # set starting points
+        start1, start2 = self.get_starting_points()
+        # group vertices
+        cluster1, cluster2 = self.group_vertices(start1, start2)
+        vis = TSP_visualiser(self.coords, 'Furthest insert', cluster1, cluster2)
+        # build cycles for start1 and start2
         path1 = build_cycle(start1, cluster1)
         path2 = build_cycle(start2, cluster2)
-
+        # get path length
         path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
-        print("test", start1, start2, ":", path_len)
-        self.draw_graph('Furthest insert', path1, path2)
+        vis.keep_graph()
+        vis.update_graph(path1=path1, path2=path2, distance=path_len)
         return path_len
 
     def regret(self):
+        def get_point_with_biggest_regret(path, cluster):
+            # collect costs
+            all_costs = []
+            neighbors = []
+            for point in cluster:
+                # for every unvisited point in cluster
+                if point not in path:
+                    neighbors.append(point)
+                    costs = []
+                    for i in range(len(path) - 1):
+                        dik = self.dist_matrix[path[i]][point]
+                        dkj = self.dist_matrix[point][path[i + 1]]
+                        dij = self.dist_matrix[path[i]][path[i + 1]]
+                        insert_cost = dik + dkj - dij
+                        costs.append((i, insert_cost))
+                    costs.sort(key=lambda x: x[1])
+                    all_costs.append(costs)
+            # calculate 2-regret
+            regrets = []
+            for i in range(len(all_costs)):
+                point = all_costs[i]
+                regret = point[1][1] - point[0][1]
+                regrets.append((neighbors[i], regret))
+            # sort points by the biggest regret
+            regrets.sort(key=lambda x: x[1], reverse=True)
+            point_to_add = regrets[0][0]
+            return point_to_add, all_costs[neighbors.index(point_to_add)][0][0]
+
+        def build_cycle(start, cluster):
+            # create a path from start to the nearest vertex
+            nn, _ = self.find_nearest_neighbour(start, cluster, [start])
+            path = [start, nn, start]
+            # while we don't have the full cycle, insert point with the biggest regret
+            while len(path) < len(cluster) + 1:
+                p, i = get_point_with_biggest_regret(path, cluster)
+                path.insert(i + 1, p)
+                # draw path on plot
+                if start == cluster1[0]:
+                    vis.update_graph(path1=path)
+                else:
+                    vis.update_graph(path2=path)
+            return path
+
+        # set starting points
         start1, start2 = self.get_starting_points()
-        path1, path2 = []
-        self.draw_graph('2-regret', path1, path2)
+        # group vertices
+        cluster1, cluster2 = self.group_vertices(start1, start2)
+        vis = TSP_visualiser(self.coords, '2-regret', cluster1, cluster2)
+        # build cycles for start1 and start2
+        path1 = build_cycle(start1, cluster1)
+        path2 = build_cycle(start2, cluster2)
+        # get path length
         path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
+        vis.keep_graph()
+        vis.update_graph(path1, path2, distance=path_len)
         return path_len
 
-    def algo_test(self, filename):
-        f = open(filename, "w")
-        for x in range(100):
-            p_len = self.greedy_cycle(x)
-            #print("test", x, "len:", p_len)
-            f.write(str(p_len)+'\n')
-        f.close()
+    # def algo_test(self, filename):
+    #     f = open(filename, "w")
+    #     for x in range(100):
+    #         p_len = self.regret(x)
+    #         # print("test", x, "len:", p_len)
+    #         f.write(str(p_len) + '\n')
+    #     f.close()
 
 
-solver = TSP_solver(kroB100_filename)
-#solver.algo_test('gc_test_B.txt')
+solver = TSP_solver(kroA100_filename)
+# solver.algo_test('2r_test_B.txt')
 solver.furthest_insert()
