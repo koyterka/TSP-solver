@@ -7,16 +7,10 @@ from random import randrange
 kroA100_filename = 'kroA100.tsp'
 kroB100_filename = 'kroB100.tsp'
 
-test_points = [(1, 1), (1.5, 5), (3.5, 2), (5, 1.5),
-               (5.5, 5), (7.5, 2), (8, 3.5), (10.5, 1),
-               (20, 10.5), (15, 13), (8, 10), (10, 12),
-               (7, 8), (10, 7), (11, 5), (15, 7)]
-
 
 class TSP_solver:
     def __init__(self, filename):
         self.coords = self.get_graph_from_tsp(filename)
-        # self.coords = test_points
         self.dist_matrix = self.get_distance_matrix(self.coords)
 
     # load point coordinates from tsp file
@@ -26,10 +20,12 @@ class TSP_solver:
         lines = file.readlines()
         file.close()
         lines = lines[6:-1]
+
         coords = []
         for point in lines:
             p = point.split()
             coords.append(np.array([int(p[1]), int(p[2])]))
+
         return coords
 
     # calculate distance matrix from coordinates
@@ -54,8 +50,10 @@ class TSP_solver:
         return cycle_len
 
     # get a random starting point (start1), get the furthest point from starting point (start2)
-    def get_starting_points(self):
+    def get_starting_points(self, s=None):
         start1 = randrange(len(self.coords))
+        if s:
+            start1 = s
         distances = self.dist_matrix[start1]
         start2 = distances.index(max(distances))
         # if we choose random
@@ -76,8 +74,6 @@ class TSP_solver:
             if dist1 != 0 and dist2 != 0:
                 dist_set.append((point, dist1 / dist2))
         dist_set.sort(key=lambda x: x[1])
-        # print("SET OF DISTANCES: ", dist_set)
-
         # put points closer to start1 to cluster1,
         # put points closer to start2 to cluster2
         mid = int(round(len(dist_set) / 2))
@@ -115,7 +111,7 @@ class TSP_solver:
         return dik + dkj - dij
 
     # solve TSP with RNN method
-    def greedy_nearest_neighbor(self):
+    def greedy_nearest_neighbor(self, s=None):
         def build_cycle(cluster, start):
             # in cluster, use nn to build a cycle that starts with start
             cycle = [start]
@@ -133,7 +129,6 @@ class TSP_solver:
             while len(cycles) < len(cluster):
                 cycle = build_cycle(cluster, cluster[len(cycles)])
                 cycles.append(cycle)
-
             cycles_len = [(p, self.get_cycle_length(cycles[p])) for p in range(len(cycles))]
             cycles_len.sort(key=lambda x: x[1])
             shortest_cycle = cycles[cycles_len[0][0]]
@@ -145,11 +140,11 @@ class TSP_solver:
             return shortest_cycle
 
         # set starting points
-        start1, start2 = self.get_starting_points()
+        start1, start2 = self.get_starting_points(s=s)
         print("Starting points: ", start1, start2)
         # group vertices
         cluster1, cluster2 = self.group_vertices(start1, start2)
-        vis = TSP_visualiser(self.coords, 'Greedy cycle', cluster1, cluster2)
+        vis = TSP_visualiser(self.coords, 'Greedy nearest neighbour', cluster1, cluster2)
         # find the shortest path in cluster1 and cluster2
         path1 = get_shortest_cycle(cluster1)
         path2 = get_shortest_cycle(cluster2)
@@ -160,7 +155,7 @@ class TSP_solver:
 
         return path_len
 
-    def greedy_cycle(self):
+    def greedy_cycle(self, s=None):
         def build_cycle(start, cluster):
             # create a path from start to the nearest vertex
             nn, _ = self.find_nearest_neighbour(start, cluster, [start])
@@ -192,7 +187,7 @@ class TSP_solver:
             return path
 
         # set starting points
-        start1, start2 = self.get_starting_points()
+        start1, start2 = self.get_starting_points(s=s)
         # group vertices
         cluster1, cluster2 = self.group_vertices(start1, start2)
         vis = TSP_visualiser(self.coords, 'Greedy cycle', cluster1, cluster2)
@@ -205,7 +200,7 @@ class TSP_solver:
         vis.update_graph(path1=path1, path2=path2, distance=path_len)
         return path_len
 
-    def furthest_insert(self):
+    def furthest_insert(self, s=None):
         def build_cycle(start, cluster):
             # create a path from start to the furthest vertex
             nn, _ = self.find_furthest_neighbour(start, cluster, [start])
@@ -237,7 +232,7 @@ class TSP_solver:
             return path
 
         # set starting points
-        start1, start2 = self.get_starting_points()
+        start1, start2 = self.get_starting_points(s=s)
         # group vertices
         cluster1, cluster2 = self.group_vertices(start1, start2)
         vis = TSP_visualiser(self.coords, 'Furthest insert', cluster1, cluster2)
@@ -250,7 +245,7 @@ class TSP_solver:
         vis.update_graph(path1=path1, path2=path2, distance=path_len)
         return path_len
 
-    def regret(self):
+    def regret(self, s=None):
         def get_point_with_biggest_regret(path, cluster):
             # collect costs
             all_costs = []
@@ -261,10 +256,7 @@ class TSP_solver:
                     neighbors.append(point)
                     costs = []
                     for i in range(len(path) - 1):
-                        dik = self.dist_matrix[path[i]][point]
-                        dkj = self.dist_matrix[point][path[i + 1]]
-                        dij = self.dist_matrix[path[i]][path[i + 1]]
-                        insert_cost = dik + dkj - dij
+                        insert_cost = self.get_insertion_cost(path[i], path[i + 1], point)
                         costs.append((i, insert_cost))
                     costs.sort(key=lambda x: x[1])
                     all_costs.append(costs)
@@ -295,7 +287,7 @@ class TSP_solver:
             return path
 
         # set starting points
-        start1, start2 = self.get_starting_points()
+        start1, start2 = self.get_starting_points(s=s)
         # group vertices
         cluster1, cluster2 = self.group_vertices(start1, start2)
         vis = TSP_visualiser(self.coords, '2-regret', cluster1, cluster2)
@@ -308,15 +300,15 @@ class TSP_solver:
         vis.update_graph(path1, path2, distance=path_len)
         return path_len
 
-    # def algo_test(self, filename):
-    #     f = open(filename, "w")
-    #     for x in range(100):
-    #         p_len = self.regret(x)
-    #         # print("test", x, "len:", p_len)
-    #         f.write(str(p_len) + '\n')
-    #     f.close()
+    def algo_test(self, filename):
+        f = open(filename, "w")
+        for x in range(100):
+            p_len = self.regret(s=x)
+            print("test", x, "len:", p_len)
+            f.write(str(p_len) + '\n')
+        f.close()
 
 
 solver = TSP_solver(kroA100_filename)
 # solver.algo_test('2r_test_B.txt')
-solver.furthest_insert()
+solver.greedy_cycle()
