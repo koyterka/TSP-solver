@@ -81,6 +81,57 @@ class TSP_solver:
         cluster2 = [start2] + [p[0] for p in dist_set[mid:]]
         return cluster1, cluster2
 
+    def inner_swap_vertices(self, path, v1, v2):
+        ids = [path.index(v) for v in [v1, v2]]
+        neighbours = []
+        # if any of the vertices is the starting vertex of path
+        # for i in ids:
+        #     if i == 0 or i == len(path)-1:
+        #             neighbours.append(None)
+        #     else:
+        #         neighbours.append((i-1, i+1))
+        #
+        # neighbours = reversed(neighbours)
+
+        if ids[0] == 0 or ids[0] == len(path)-1:
+            path[0], path[len(path)-1], path[ids[1]] = path[ids[1]], path[ids[1]], path[ids[0]]
+        elif ids[1] == 0 or ids[1] == len(path)-1:
+            path[0], path[len(path) - 1], path[ids[0]] = path[ids[0]], path[ids[0]], path[ids[1]]
+        else:
+            path[ids[0]], path[ids[1]] = path[ids[1]], path[ids[0]]
+
+        return path
+
+    def inner_swap_edges(self, path, e1, e2):
+        ids = [[],[]]
+        ids[0] = [path.index(v) for v in e1]
+        ids[1] = [path.index(v) for v in e2]
+        if ids[0][0] > ids[1][0]:
+            ids[0], ids[1] = ids[1], ids[0]
+        path[ids[0][1]], path[ids[1][0]] = path[ids[1][0]], path[ids[0][1]]
+        id1 = ids[0][1]+1
+        id2 = ids[1][0]
+        path[id1:id2] = path[id1:id2][::-1]
+        return path
+
+    # swap 2 vertices between 2 cycles
+    def inter_swap_vertices(self, path1, path2, v1, v2):
+        id1 = path1.index(v1)
+        id2 = path2.index(v2)
+        print(path1, path2)
+        print(id1, id2)
+
+        if id1 != 0 and id2 != 0:
+            path1[id1], path2[id2] = v2, v1
+            return path1, path2
+
+        if id1 == 0 or id1 == len(path1)-1:
+            path1[id1], path1[len(path1) - 1], path2[id2] = v2, v2, v1
+        if id2 == 0 or id2 == len(path2)-1:
+            path2[0], path2[len(path2) - 1], path1[id1] = v1, v1, v2
+
+        return path1, path2
+
     # for point, find the nearest neighbour in cluster that hasn't been visited yet
     def find_nearest_neighbour(self, point, cluster, visited):
         distances = self.dist_matrix[point]
@@ -309,6 +360,12 @@ class TSP_solver:
         f.close()
 
 
-solver = TSP_solver(kroA100_filename)
-# solver.algo_test('2r_test_B.txt')
-solver.greedy_cycle()
+solver = TSP_solver(kroB100_filename)
+# # solver.algo_test('2r_test_B.txt')
+# solver.furthest_insert(s=96)
+
+p1 = [1, 2, 3, 4, 5, 1]
+p2 = [6, 7, 8, 9, 10, 6]
+p3 = [4, 5, 6, 7, 8, 9, 10, 4]
+#print(solver.inter_swap_vertices(p1, p2, 1, 6))
+print(solver.inner_swap_edges(p3, [9,10], [4,5]))
