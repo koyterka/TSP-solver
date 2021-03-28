@@ -3,14 +3,20 @@ import numpy as np
 import math
 from TSP_visualiser import TSP_visualiser
 from random import randrange
-
+import random
+from random import shuffle
+import time
+import itertools
 kroA100_filename = 'kroA100.tsp'
 kroB100_filename = 'kroB100.tsp'
 
+test_coords = [[2,5], [3,7], [5,8], [7.5, 6.5], [9,5.5], [6.5, 4], [7.5, 9], [9,12], [13, 12], [14,9], [12.5, 9.5],
+               [10.5, 10.5], [10.5, 8], [7.5, 9]]
 
 class TSP_solver:
     def __init__(self, filename):
         self.coords = self.get_graph_from_tsp(filename)
+        #self.coords = test_coords
         self.dist_matrix = self.get_distance_matrix(self.coords)
 
     # load point coordinates from tsp file
@@ -44,9 +50,12 @@ class TSP_solver:
     # calculate the length of cycle
     def get_cycle_length(self, cycle):
         cycle_len = 0
-        for i, point in enumerate(cycle[:-1]):
-            edge_len = self.dist_matrix[point][cycle[i + 1]]
-            cycle_len = cycle_len + edge_len
+        if cycle is None:
+            return cycle_len
+        else:
+            for i, point in enumerate(cycle[:-1]):
+                edge_len = self.dist_matrix[point][cycle[i + 1]]
+                cycle_len = cycle_len + edge_len
         return cycle_len
 
     # get a random starting point (start1), get the furthest point from starting point (start2)
@@ -81,57 +90,6 @@ class TSP_solver:
         cluster2 = [start2] + [p[0] for p in dist_set[mid:]]
         return cluster1, cluster2
 
-    def inner_swap_vertices(self, path, v1, v2):
-        ids = [path.index(v) for v in [v1, v2]]
-        neighbours = []
-        # if any of the vertices is the starting vertex of path
-        # for i in ids:
-        #     if i == 0 or i == len(path)-1:
-        #             neighbours.append(None)
-        #     else:
-        #         neighbours.append((i-1, i+1))
-        #
-        # neighbours = reversed(neighbours)
-
-        if ids[0] == 0 or ids[0] == len(path)-1:
-            path[0], path[len(path)-1], path[ids[1]] = path[ids[1]], path[ids[1]], path[ids[0]]
-        elif ids[1] == 0 or ids[1] == len(path)-1:
-            path[0], path[len(path) - 1], path[ids[0]] = path[ids[0]], path[ids[0]], path[ids[1]]
-        else:
-            path[ids[0]], path[ids[1]] = path[ids[1]], path[ids[0]]
-
-        return path
-
-    def inner_swap_edges(self, path, e1, e2):
-        ids = [[],[]]
-        ids[0] = [path.index(v) for v in e1]
-        ids[1] = [path.index(v) for v in e2]
-        if ids[0][0] > ids[1][0]:
-            ids[0], ids[1] = ids[1], ids[0]
-        path[ids[0][1]], path[ids[1][0]] = path[ids[1][0]], path[ids[0][1]]
-        id1 = ids[0][1]+1
-        id2 = ids[1][0]
-        path[id1:id2] = path[id1:id2][::-1]
-        return path
-
-    # swap 2 vertices between 2 cycles
-    def inter_swap_vertices(self, path1, path2, v1, v2):
-        id1 = path1.index(v1)
-        id2 = path2.index(v2)
-        print(path1, path2)
-        print(id1, id2)
-
-        if id1 != 0 and id2 != 0:
-            path1[id1], path2[id2] = v2, v1
-            return path1, path2
-
-        if id1 == 0 or id1 == len(path1)-1:
-            path1[id1], path1[len(path1) - 1], path2[id2] = v2, v2, v1
-        if id2 == 0 or id2 == len(path2)-1:
-            path2[0], path2[len(path2) - 1], path1[id1] = v1, v1, v2
-
-        return path1, path2
-
     # for point, find the nearest neighbour in cluster that hasn't been visited yet
     def find_nearest_neighbour(self, point, cluster, visited):
         distances = self.dist_matrix[point]
@@ -160,6 +118,43 @@ class TSP_solver:
         dkj = self.dist_matrix[k][j]
         dij = self.dist_matrix[i][j]
         return dik + dkj - dij
+
+    def find_path(self, v1, path1):
+        return 0 if v1 in path1 else 1
+
+    def get_edge_cost(self, v1, v2):
+        return self.dist_matrix[v1][v2]
+
+    def del_common_from_neigh(self, n1, n2):
+        return [n for n in n1 if n not in n2]
+
+    def get_delta(self, move, path1, path2):
+        deleted_edges, added_edges = 0, 0
+        if len(move) > 1:   # edges swap
+            deleted_edges += self.dist_matrix[move[0][0]][move[0][1]]
+            deleted_edges += self.dist_matrix[move[1][0]][move[1][1]]
+            added_edges += self.dist_matrix[move[0][0]][move[1][0]]
+            added_edges += self.dist_matrix[move[0][1]][move[1][1]]
+        else:   # vertex swap
+            paths = [path1, path2]
+            v1, v2 = move[0][0], move[0][1]
+            v1path, v2path = self.find_path(v1, path1), self.find_path(v2, path1)
+            n11, n12 = self.get_vertices_nearby(paths[v1path], v1)
+            n21, n22 = self.get_vertices_nearby(paths[v2path], v2)
+            n1, n2 = [n11, n12], [n21, n22]
+
+            if v1path == v2path:
+                n1 = self.del_common_from_neigh([n11, n12], [n21, v2, n22])
+                n2 = self.del_common_from_neigh([n21, n22], [n11, v1, n12])
+
+            for n in n1:
+                deleted_edges += self.get_edge_cost(n, v1)
+                added_edges += self.get_edge_cost(n, v2)
+            for n in n2:
+                deleted_edges += self.get_edge_cost(n, v2)
+                added_edges += self.get_edge_cost(n, v1)
+
+        return added_edges - deleted_edges
 
     # solve TSP with RNN method
     def greedy_nearest_neighbor(self, s=None):
@@ -331,25 +326,169 @@ class TSP_solver:
                 p, i = get_point_with_biggest_regret(path, cluster)
                 path.insert(i + 1, p)
                 # draw path on plot
-                if start == cluster1[0]:
-                    vis.update_graph(path1=path)
-                else:
-                    vis.update_graph(path2=path)
+                # if start == cluster1[0]:
+                #     vis.update_graph(path1=path)
+                # else:
+                #     vis.update_graph(path2=path)
             return path
 
         # set starting points
         start1, start2 = self.get_starting_points(s=s)
         # group vertices
         cluster1, cluster2 = self.group_vertices(start1, start2)
-        vis = TSP_visualiser(self.coords, '2-regret', cluster1, cluster2)
+        #vis = TSP_visualiser(self.coords, '2-regret', cluster1, cluster2)
         # build cycles for start1 and start2
         path1 = build_cycle(start1, cluster1)
         path2 = build_cycle(start2, cluster2)
         # get path length
+        #path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
+        # vis.keep_graph()
+        # vis.update_graph(path1, path2, distance=path_len)
+        return path1, path2
+
+    def get_vertices_nearby(self, path, v):
+        id = path.index(v)
+        if id == 0 or id == len(path)-1:
+            return [path[len(path)-2], path[1]]
+        else:
+            return path[id-1], path[id+1]
+
+    def get_vertices_swap_neighbourhood(self, path1, path2=None):
+        N = []
+        if path2:
+            for m in list(itertools.product(path1[:-1], path2[:-1])):
+                N.append([m])
+        else:
+            for i1, e1 in enumerate(path1[:-1]):
+                for e2 in path1[i1+1:-1]:
+                    N.append([(e1, e2)])
+        return N
+
+    def get_edges_swap_neighbourhood(self, path):
+        N = []
+        for i1, v1 in enumerate(path[:-2]):
+            for i2 in range(len(path[i1 + 1:-1])):
+                if path[i1 + 1 + i2] not in [path[i1], path[i1 + 1]] and path[i2 + i1 + 2] not in [path[i1],
+                                                                                                   path[i1 + 1]]:
+                    N.append([[path[i1], path[i1 + 1]], [path[i2 + i1 + 1], path[i2 + i1 + 2]]])
+        return N
+
+    def apply_move_to_path(self, path1, path2, move):
+        # edges swap [[4,5],[7,8]]
+        if len(move) > 1:
+            e1 = move[0][1] #5
+            e2 = move[1][0] #7
+            first = e1 in path1
+            modified_path = path1.copy() if first else path2.copy()
+            id1 = modified_path.index(e1)
+            id2 = modified_path.index(e2)
+            modified_path[id1], modified_path[id2] = modified_path[id2], modified_path[id1]
+            modified_path[id1 + 1:id2] = modified_path[id1+1:id2][::-1]
+
+            return (modified_path, path2) if first else (path1, modified_path)
+
+        # vertices swap
+        else:
+            paths_to_return = [path1.copy(), path2.copy()]
+            e1, e2 = move[0][0], move[0][1]
+
+            is1, is2 = int(e1 not in path1), int(e2 not in path1)
+            # 1 1 -- both in path2
+            # 0 0 -- both in path1
+            # 1 0 -- e1 in path2, e2 in path1
+            # 0 1 -- e1 in path1, e2 in path2
+
+            id1, id2 = paths_to_return[is1].index(e1), paths_to_return[is2].index(e2)
+            paths_to_return[is1][id1], paths_to_return[is2][id2] = paths_to_return[is2][id2], paths_to_return[is1][id1]
+
+            for i in range(len(paths_to_return)):
+                p = paths_to_return[i]
+                paths_to_return[i] = p[:-1]
+                paths_to_return[i].append(p[0])
+
+            return paths_to_return[0], paths_to_return[1]
+
+    def get_neighbourhood(self, path1, path2=None, mode='e'):
+        # get outer vertices neighbourhood
+        N = self.get_vertices_swap_neighbourhood(path1=path1, path2=path2)
+        # get inner vertices neighbourhood
+        if mode == 'v':
+            N2 = self.get_vertices_swap_neighbourhood(path1=path1, path2=None)
+            N3 = self.get_vertices_swap_neighbourhood(path1=path2, path2=None)
+        # get inner edges neighbourhood
+        else:
+            N2 = self.get_edges_swap_neighbourhood(path=path1)
+            N3 = self.get_edges_swap_neighbourhood(path=path2)
+        N = N+N2+N3
+        return N
+
+    def get_best_move(self, N, path1, path2):
+        best_delta = np.inf
+        best_move = None
+        for m in N:
+            dm = self.get_delta(m, path1, path2)
+            if dm < best_delta:
+                best_delta = dm
+                best_move = m
+        return best_move
+
+    def randomize_neighbourhood(self, N):
+        n = random.choice(range(len(N)))
+        return N[n:]+N[:n]
+
+    def steepest(self, path1, path2=None, mode='e'):
+        cluster1 = [x for x in range(100) if x in path1]
+        cluster2 = [x for x in range(100) if x not in path1]
+        vis = TSP_visualiser(self.coords, 'Steepest '+mode, cluster1, cluster2)
+        original_path1 = path1.copy()
+        original_path2 = path2.copy()
+
+        found = True
+        while found:
+            found = False
+            N = self.get_neighbourhood(path1, path2, mode)
+            m = self.get_best_move(N, path1, path2)
+            if self.get_delta(m, path1, path2) < 0:
+                (path1, path2) = self.apply_move_to_path(path1, path2, m)
+                vis.update_graph(path1=path1, path2=path2, distance=0)
+                found = True
+
+        improv = self.get_cycle_length(original_path1) + self.get_cycle_length(original_path2) - self.get_cycle_length(
+            path1) - self.get_cycle_length(path2)
+        percent = improv / (self.get_cycle_length(original_path1) + self.get_cycle_length(original_path2))
+        print("Improvement:", improv)
         path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
         vis.keep_graph()
-        vis.update_graph(path1, path2, distance=path_len)
-        return path_len
+        vis.update_graph(path1=path1, path2=path2, distance=path_len)
+        return path1, path2, improv, percent
+
+    def greedy(self, path1, path2=None, mode = 'e'):
+        cluster1 = [x for x in range(len(self.dist_matrix)) if x in path1]
+        cluster2 = [x for x in range(len(self.dist_matrix)) if x in path2]
+        vis = TSP_visualiser(self.coords, 'Greedy '+mode, cluster1, cluster2)
+
+        original_path1 = path1.copy()
+        original_path2 = path2.copy()
+
+        found = True
+        while found:
+            found = False
+            N = self.get_neighbourhood(path1, path2, mode)
+            randomized_N = self.randomize_neighbourhood(N)
+            for m in randomized_N:
+                if self.get_delta(m, path1, path2) < 0:
+                    (path1, path2) = self.apply_move_to_path(path1, path2, m)
+                    vis.update_graph(path1=path1, path2=path2, distance=0)
+                    found = True
+                    break
+
+        improv = self.get_cycle_length(original_path1) + self.get_cycle_length(original_path2) - self.get_cycle_length(path1) - self.get_cycle_length(path2)
+        percent = improv/(self.get_cycle_length(original_path1) + self.get_cycle_length(original_path2))
+        print("Improvement:", improv)
+        path_len = self.get_cycle_length(path1) + self.get_cycle_length(path2)
+        vis.keep_graph()
+        vis.update_graph(path1=path1, path2=path2, distance=path_len)
+        return path1, path2, improv, percent
 
     def algo_test(self, filename):
         f = open(filename, "w")
@@ -359,13 +498,61 @@ class TSP_solver:
             f.write(str(p_len) + '\n')
         f.close()
 
+    def generate_random_paths(self):
+        ran = [i for i in range(len(self.dist_matrix))]
+        split = int(len(self.dist_matrix) / 2)
+        a_random_path = random.sample(ran, split)
+        a_random_path.append(a_random_path[0])
+        b_random_path = [i for i in ran if i not in a_random_path]
+        shuffle(b_random_path)
+        b_random_path.append(b_random_path[0])
+        #print("\n\nPATHS:", a_random_path, b_random_path)
+        return a_random_path, b_random_path
 
-solver = TSP_solver(kroB100_filename)
-# # solver.algo_test('2r_test_B.txt')
-# solver.furthest_insert(s=96)
+    def construction_test(self, filename1, filename2, filename3):
+        f1 = open(filename1, "w")
+        f2 = open(filename2, "w")
+        f3 = open(filename3, "w")
+        best_before_1, best_before_2, best_after_1, best_after_2 = None, None, None, None
+        best_percent = 0
 
-p1 = [1, 2, 3, 4, 5, 1]
-p2 = [6, 7, 8, 9, 10, 6]
-p3 = [4, 5, 6, 7, 8, 9, 10, 4]
-#print(solver.inter_swap_vertices(p1, p2, 1, 6))
-print(solver.inner_swap_edges(p3, [9,10], [4,5]))
+        for x in range(100):
+            #p1, p2 = self.generate_random_paths()
+            p1, p2 = self.regret(x)
+            start = time.time()
+            print("building...")
+            p1after, p2after, improv, percent = self.steepest(path1=p1, path2=p2, mode='e')
+            end = time.time()
+            elapsed = end - start
+            print("test", x, "improvement:", improv, "percent", percent, "time:", elapsed)
+
+            if percent > best_percent:
+                best_before_1, best_before_2 = p1, p2
+                best_after_1, best_after_2 = p1after, p2after
+                best_percent = percent
+                print("best", best_percent)
+
+            f1.write(str(improv) + '\n')
+            f2.write(str(elapsed) + '\n')
+            f3.write(str(percent) + '\n')
+        f1.close()
+        f2.close()
+        f3.close()
+        return best_before_1, best_before_2, best_after_1, best_after_2
+
+    def draw_path(self, p1, p2):
+        cluster1 = [x for x in range(len(self.dist_matrix)) if x in p1]
+        cluster2 = [x for x in range(len(self.dist_matrix)) if x in p2]
+        vis = TSP_visualiser(self.coords, 'Best of steepest e regret, kroA100', cluster1, cluster2)
+        vis.keep_graph()
+        dist = self.get_cycle_length(p1) + self.get_cycle_length(p2)
+        vis.update_graph(path1=p1, path2=p2, distance=dist)
+
+
+solver = TSP_solver(kroA100_filename)
+p1, p2 = solver.generate_random_paths()
+N = solver.steepest(p1, path2=p2, mode='e')
+
+# p1b, p2b, p1a, p2a = solver.construction_test("improv_test.txt", "time_test.txt", "percent_test.txt")
+# print(p1b, p2b)
+# solver.draw_path(p1a, p2a)

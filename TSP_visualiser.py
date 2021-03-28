@@ -48,6 +48,8 @@ class TSP_visualiser:
             self.draw_edge(self.coords[path[-1]], self.coords[path[0]], color)
 
     def update_graph(self, path1=None, path2=None, distance=0):
+        self.cluster1 = path1
+        self.cluster2 = path2
         for i, a in enumerate(self.edges):
             a.remove()
         self.edges[:] = []
@@ -69,7 +71,7 @@ class TSP_visualiser:
         plt.tight_layout()
         #ion()
         plt.show()
-        plt.pause(1e-20)
+        plt.pause(1e-50)
 
     def keep_graph(self):
         plt.ioff()
